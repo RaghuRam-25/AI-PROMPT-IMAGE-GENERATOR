@@ -14,7 +14,10 @@ export default function Home() {
     setImageUrl('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/generate', {
+      // Vercel-এর এনভায়রনমেন্ট ভ্যারিয়েবল চেক করা হচ্ছে। না থাকলে ডিফল্ট লোকালহোস্ট ব্যবহার করবে।
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+      const response = await fetch(`${backendUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userInput }),
@@ -26,11 +29,11 @@ export default function Home() {
         setRefinedPrompt(result.refinedPrompt);
         setImageUrl(result.imageUrl);
       } else {
-        alert(result.error || "কোনো সমস্যা হয়েছে, আবার চেষ্টা করো।");
+        alert(result.error || "কোনো समस्या হয়েছে, আবার চেষ্টা করো।");
       }
     } catch (error) {
       console.error(error);
-      alert("ব্যাকএন্ড সার্ভার কানেক্ট করা যাচ্ছে না। নিশ্চিত করুন আপনার ব্যাকএন্ড (Port 5000) সচল আছে।");
+      alert("ব্যাকএন্ড সার্ভার কানেক্ট করা যাচ্ছে না। নিশ্চিত করুন আপনার ব্যাকএন্ড সচল আছে।");
     } finally {
       setLoading(false);
     }
@@ -39,13 +42,13 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-6">
       <h1 className="text-4xl font-bold mb-2 text-blue-400">AI Prompt & Image Generator</h1>
-      <p className="text-gray-400 mb-8 text-center max-w-md">তোমার অগোছালো আইডিয়াটি নিচে লেখো। আমাদের এআই সেটিকে নিখুঁত করে ছবি ও প্রম্পট বানিয়ে দেবে।</p>
+      <p className="text-gray-400 mb-8 text-center max-w-md">তোমার অগোছালো আইডিয়াটি নিচে লেখো। আমাদের এআই সেটিকে নিখুঁত করে ছবি ও প্রম্পট বানিয়ে দেবে।</p>
 
       <div className="w-full max-w-2xl bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
         <textarea
           className="w-full bg-gray-700 border border-gray-600 rounded-lg p-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows="4"
-          placeholder="যেমন: একটি বিড়াল চাঁদে বসে চা খাচ্ছে..."
+          placeholder="যেমন: একটি বিড়াল চাঁদে বসে চা খাচ্ছে..."
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
         />
@@ -76,7 +79,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(refinedPrompt);
-                  alert("প্রম্পট কপি হয়েছে!");
+                  alert("প্রম্পট কপি হয়েছে!");
                 }}
                 className="mt-4 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition text-sm"
               >
