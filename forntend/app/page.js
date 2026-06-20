@@ -14,10 +14,13 @@ export default function Home() {
     setImageUrl('');
 
     try {
-      // Vercel-এর এনভায়রনমেন্ট ভ্যারিয়েবল চেক করা হচ্ছে। না থাকলে ডিফল্ট লোকালহোস্ট ব্যবহার করবে।
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      // প্রথমে Vercel-এর ভ্যারিয়েবল খুঁজবে, না পেলে সরাসরি আপনার Render লিংকে রিকোয়েস্ট পাঠাবে
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://ai-prompt-image-generator.onrender.com';
 
-      const response = await fetch(`${backendUrl}/api/generate`, {
+      // লিংকের শেষে ডাবল স্ল্যাশ এড়ানোর জন্য ট্রিম করা হয়েছে
+      const cleanBackendUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
+
+      const response = await fetch(`${cleanBackendUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userInput }),
@@ -29,11 +32,11 @@ export default function Home() {
         setRefinedPrompt(result.refinedPrompt);
         setImageUrl(result.imageUrl);
       } else {
-        alert(result.error || "কোনো समस्या হয়েছে, আবার চেষ্টা করো।");
+        alert(result.error || "কোনো সমস্যা হয়েছে, আবার চেষ্টা করো।");
       }
     } catch (error) {
-      console.error(error);
-      alert("ব্যাকএন্ড সার্ভার কানেক্ট করা যাচ্ছে না। নিশ্চিত করুন আপনার ব্যাকএন্ড সচল আছে।");
+      console.error("Error connecting to backend:", error);
+      alert("ব্যাকএন্ড সার্ভার কানেক্ট করা যাচ্ছে না। নিশ্চিত করুন আপনার ব্যাকএন্ড সচল আছে এবং Render সার্ভারটি চালু হতে একটু সময় নিচ্ছে (Cold Start)।");
     } finally {
       setLoading(false);
     }
