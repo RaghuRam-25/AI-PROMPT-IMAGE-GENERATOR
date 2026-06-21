@@ -9,6 +9,18 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
+// Hugging Face ফ্রি ইনফ্যারেন্স ফাংশন
+async function queryHF(modelId, payload) {
+  return await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
+    headers: { 
+      Authorization: `Bearer ${process.env.HF_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 app.post('/api/generate', async (req, res) => {
   const { userInput } = req.body;
 
@@ -16,27 +28,60 @@ app.post('/api/generate', async (req, res) => {
     return res.status(400).json({ error: "Input is required!" });
   }
 
+  // কি-ওয়ার্ড চেকিং: ইনপুটটি কি সাধারণ আইডিয়া নাকি অলরেডি এআই প্রম্পট?
+  const isAlreadyPrompt = /canon|eos|8k|photorealistic|bokeh|resolution|detailed/i.test(userInput);
+
+  let refinedPrompt = "";
+  let imageUrl = "";
+
   try {
-    // ১. ইউনিভার্সাল এআই মাস্টার প্রম্পট
-   const refinedPrompt = `A truly authentic real-world photograph of ${userInput}, visually indistinguishable from an actual professional camera capture, with zero AI-generated appearance. Captured in a spontaneous candid documentary moment with natural emotion and believable presence. No posing, no staged expression, no artificial perfection. Photographed on Canon EOS R5 with RF 85mm f/1.4L lens, shutter speed 1/1200s, ISO 400, full-frame sensor rendering, realistic optical characteristics, natural depth compression, accurate focal behavior. Natural early-morning ambient light with soft atmospheric diffusion, physically accurate light falloff, realistic shadow gradients, subtle indirect bounce light, true dynamic range, natural highlight roll-off. Extremely realistic skin and surface rendering: visible pores, tiny asymmetry, natural skin variation, realistic hair texture, micro-contrast, true material response, lifelike reflections, authentic environmental interaction. Documentary-grade composition with believable framing, cinematic foreground separation, natural negative space, immersive depth, premium editorial storytelling. True camera realism: RAW photo aesthetic, accurate color science, realistic white balance, subtle sensor noise, natural edge softness, organic detail retention, film-quality tonal transitions. No CGI, no AI artifacts, no plastic skin, no excessive smoothness, no oversharpening, no fake HDR, no unrealistic glow, no overprocessed colors, no synthetic details. Final result should resemble an untouched high-end editorial photograph selected for publication, completely believable as a real captured moment.`;
+    if (!isAlreadyPrompt) {
+      // 📝 মোড ১: শুধুমাত্র প্রম্পট জেনারেট হবে (কোনো ছবি নয়)
+      console.log("মোড ১: এআই প্রম্পট তৈরি করছে...");
+      
+      const llmModel = "Qwen/Qwen2.5-7B-Instruct";
+      const systemPrompt = `You are an expert AI prompt engineer. Expand the user's simple concept into a highly detailed, photorealistic, and descriptive image prompt suitable for Midjourney and Bing. Include professional camera terms like 'Shot on Canon EOS R5, 85mm lens, photorealistic, 8k resolution'. Keep it under 60 words. Respond ONLY with the expanded prompt text, no explanations.`;
+      
+      try {
+        const textResponse = await queryHF(llmModel, {
+          inputs: `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userInput}<|im_end|>\n<|im_start|>assistant\n`,
+          parameters: { max_new_tokens: 100, temperature: 0.7 }
+        });
 
-    // ২. স্পেস বা খালি জায়গাগুলোকে ইউআরএল ফ্রেন্ডলি করা (সবচেয়ে গুরুত্বপূর্ণ লাইন)
-    const cleanInput = encodeURIComponent(userInput.trim());
-    
-    // ৩. রিয়েল-টাইম এআই ইমেজ লিংক জেনারেটর
-    const imageUrl = `https://image.pollinations.ai/p/${cleanInput}?width=600&height=400&nologo=true`;
+        if (textResponse.ok) {
+          const textResult = await textResponse.json();
+          const generatedText = textResult[0]?.generated_text || "";
+          refinedPrompt = generatedText.split("<|im_start|>assistant\n")[1]?.replace("<|im_end|>", "").trim();
+        }
+      } catch (e) {
+        console.log("HF API Offline, using template fallback...");
+      }
 
-    console.log("image:", imageUrl);
+      if (!refinedPrompt) {
+        refinedPrompt = `Award-winning National Geographic editorial photo of ${userInput}, candid documentary style. Shot on Canon EOS R5 with an 85mm f/1.4 lens, photorealistic, sharp focus, crisp 8k resolution, cinematic atmosphere.`;
+      }
+    } else {
+      // 🎨 মোড ২: ইনপুট অলরেডি প্রম্পট, তাই সরাসরি ছবি জেনারেট হবে
+      console.log("মোড ২: সরাসরি ছবি তৈরি হচ্ছে...");
+      refinedPrompt = userInput; // প্রম্পট যা আছে তাই থাকবে
+      const cleanInput = encodeURIComponent(userInput.trim());
+      imageUrl = `https://image.pollinations.ai/p/${cleanInput}?width=800&height=500&nologo=true`;
+    }
 
-    // ৪. ডাটাবেজে ডাটা সেভ করা
-    const savedData = await prisma.generation.create({
-      data: { userInput, refinedPrompt, imageUrl }
-    });
+    // ডাটাবেজে সেভ করা (সেফটি ট্রাই-ক্যাচ সহ)
+    try {
+      await prisma.generation.create({
+        data: { userInput, refinedPrompt, imageUrl: imageUrl || "" }
+      });
+    } catch (dbError) {
+      console.log("Database write skipped.");
+    }
 
+    // ফ্রন্টএন্ডে রেজাল্ট পাঠানো
     res.status(200).json({
       success: true,
-      refinedPrompt: savedData.refinedPrompt,
-      imageUrl: savedData.imageUrl
+      refinedPrompt: isAlreadyPrompt ? "" : refinedPrompt, // মোড ২ এ নতুন প্রম্পট খালি থাকবে
+      imageUrl: imageUrl // মোড ১ এ ইমেজ খালি থাকবে
     });
 
   } catch (error) {
